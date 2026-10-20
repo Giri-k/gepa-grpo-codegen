@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-No code exists yet. The only file is `project_proposal_gk8373_ss236792.pdf` (UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso). When build, test, or run commands are added, document them here.
+No code exists yet. This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. When build, test, or run commands are added, document them here.
+
+Training and large-scale generation run on **TACC** (Slurm, no Docker, so use Apptainer; models and data are pre-downloaded on login nodes; large outputs go on `$SCRATCH`, which is purged). Development and small pilots run locally.
 
 ## Research question
 
