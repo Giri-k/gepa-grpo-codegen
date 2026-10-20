@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Env / secrets
+.env
+
+# Large artifacts (keep on TACC $SCRATCH/$WORK)
+checkpoints/
+outputs/
+runs/
+wandb/
+*.sif
+*.safetensors
+*.bin
+*.pt
+data/raw/
+data/cache/
+
+# Slurm logs
+slurm-*.out
+*.log
+
+# OS
+.DS_Store
