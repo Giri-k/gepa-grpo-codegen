@@ -4,13 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-No code exists yet. This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. When build, test, or run commands are added, document them here.
+This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. Only the data pipeline (Phase 1) exists so far.
 
 Training and large-scale generation run on **TACC** (Slurm, no Docker, so use Apptainer; models and data are pre-downloaded on login nodes; large outputs go on `$SCRATCH`, which is purged). Development and small pilots run locally.
 
+## Commands
+
+```bash
+uv sync                                        # create .venv (Python >=3.10) with dev deps
+uv run pytest                                  # all tests
+uv run pytest tests/test_splits.py::test_write_freeze_guard_and_load_roundtrip   # one test
+uv run python -m codegen.data.splits --download  # fetch pinned APPS + TACO-verified (~3.3 GB) and build splits
+uv run python -m codegen.data.splits           # rebuild splits, ~5 min (refuses to change eval.json without --force)
+```
+
+## Data pipeline (`src/codegen/data/`)
+
+**Dataset decision:** eval = APPS-test (as in the proposal). All other splits = **stdio problems with ≥5 tests and a reference solution**, drawn from APPS-train + TACO-verified (EASY/MEDIUM/MEDIUM_HARD). Why:
+- APPS-test is ~99% stdio, while APPS-train introductory problems are ~86% call-based.
+- Every stdio APPS-train intro/interview problem has exactly **one** test, usually the example in the statement, which a model can pass by echoing it. So in practice almost all training data comes from TACO.
+- Dropping copies of APPS-test removes more than half of TACO's multi-test problems, which leaves ~1.4k problems. That's why the fixed splits are small (dev 200, gepa_val 100, gepa_train 100).
+
+- `apps.py` / `taco.py` download raw files from HF at **pinned revisions with SHA-256 checks**. Loading fails on a checksum mismatch, which has already caught a hand-edited raw file once. Raw files live in gitignored `data/raw/`. Both datasets share the APPS record format and `apps.parse_problem`. Stdio tests are normalized to strings. Call-based outputs are kept raw (APPS often wraps the return value in a one-element list, so the evaluator must accept both forms). Ids are `train-0001`, `test-0042`, `taco-01234`.
+- `splits.py` writes id lists `data/splits/{eval,dev,gepa_val,gepa_train,grpo_train}.json` plus `manifest.json` and `dropped.json` (committed), and full problems to `data/processed/*.jsonl` (gitignored). The fixed splits are stratified by (source, difficulty, kind), and `grpo_train` gets everything left.
+- Leakage rules (`dedup.py`: 5-word-shingle Jaccard ≥ 0.35 after stripping LaTeX, `$` and `<image>`, a cutoff chosen from a measured gap between copies and distinct problems): drop pool problems that near-duplicate **any** APPS-test problem (TACO contains APPS-test verbatim). Each duplicate cluster in the pool keeps one problem, the one with the most tests.
+- `eval` uses its own RNG stream, so train-side config changes never alter it. **`eval.json` is frozen once committed.** Use `load_split(name)`, which reads `data/processed/` and checks it against the committed ids.
+
 ## Research question
 
-Can prompt optimization (GEPA), weight post-training (GRPO + LoRA), or both together improve **first-attempt (pass@1) Python code generation** for **Qwen3-4B** on **APPS**?
+Can prompt optimization (GEPA), weight post-training (GRPO + LoRA), or both together improve **first-attempt (pass@1) Python code generation** for **Qwen3-4B**, evaluated on **APPS-test**?
 
 ## Experimental design (constraints that code must respect)
 

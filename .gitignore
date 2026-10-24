@@ -20,6 +20,7 @@ wandb/
 *.pt
 data/raw/
 data/cache/
+data/processed/
 
 # Slurm logs
 slurm-*.out

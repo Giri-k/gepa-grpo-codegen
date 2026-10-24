@@ -1,0 +1,99 @@
+{
+  "sources": {
+    "apps": {
+      "hf_repo": "codeparrot/apps",
+      "revision": "21e74ddf8de1a21436da12e3e653065c5213e9d1",
+      "sha256": {
+        "train": "45e82ef22ed8e7c0c04d881a21b923e9dd233157896b0b8d5b3493e887499cae",
+        "test": "5b003a65ac40feb47dd5eaec267a767a6fc435bdcfa68ff715fe869f948e760c"
+      }
+    },
+    "taco_verified": {
+      "hf_repo": "likaixin/TACO-verified",
+      "revision": "9e68575e01938f016199eda6f07d1a7ce96b35e1",
+      "sha256": "d0593d49df5466f53bbe701a830ade4fda1b2c8b57d47a0b76399c783892287e"
+    }
+  },
+  "config": {
+    "seed": 0,
+    "eval_counts": {
+      "introductory": 150,
+      "interview": 300,
+      "competition": 50
+    },
+    "sizes": {
+      "dev": 200,
+      "gepa_val": 100,
+      "gepa_train": 100
+    },
+    "apps_difficulties": [
+      "introductory",
+      "interview"
+    ],
+    "taco_difficulties": [
+      "EASY",
+      "MEDIUM",
+      "MEDIUM_HARD"
+    ],
+    "kinds": [
+      "stdio"
+    ],
+    "min_tests": 5,
+    "require_solution": true,
+    "dedup_threshold": 0.35
+  },
+  "splits": {
+    "eval": {
+      "n": 500,
+      "median_tests": 17,
+      "by_source/difficulty/kind": {
+        "test/competition/stdio": 50,
+        "test/interview/call": 1,
+        "test/interview/stdio": 299,
+        "test/introductory/call": 1,
+        "test/introductory/stdio": 149
+      }
+    },
+    "dev": {
+      "n": 200,
+      "median_tests": 102,
+      "by_source/difficulty/kind": {
+        "taco/EASY/stdio": 106,
+        "taco/MEDIUM/stdio": 32,
+        "taco/MEDIUM_HARD/stdio": 62
+      }
+    },
+    "gepa_val": {
+      "n": 100,
+      "median_tests": 102,
+      "by_source/difficulty/kind": {
+        "taco/EASY/stdio": 53,
+        "taco/MEDIUM/stdio": 16,
+        "taco/MEDIUM_HARD/stdio": 31
+      }
+    },
+    "gepa_train": {
+      "n": 100,
+      "median_tests": 102,
+      "by_source/difficulty/kind": {
+        "taco/EASY/stdio": 53,
+        "taco/MEDIUM/stdio": 16,
+        "taco/MEDIUM_HARD/stdio": 31
+      }
+    },
+    "grpo_train": {
+      "n": 893,
+      "median_tests": 102,
+      "by_source/difficulty/kind": {
+        "taco/EASY/stdio": 471,
+        "taco/MEDIUM/stdio": 146,
+        "taco/MEDIUM_HARD/stdio": 274,
+        "train/interview/stdio": 2
+      }
+    }
+  },
+  "dropped_counts": {
+    "dup_of_apps_test": 2421,
+    "dup_within_pool": 130
+  }
+}
