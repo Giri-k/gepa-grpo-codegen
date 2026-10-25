@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. Only the data pipeline (Phase 1) exists so far.
+This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. Done so far: the data pipeline (Phase 1), plus the code extractor (`extract.py`) and Docker sandbox (`sandbox/`) of the shared evaluator (Phase 2). Output comparison and scoring are next.
 
 Training and large-scale generation run on **TACC** (Slurm, no Docker, so use Apptainer; models and data are pre-downloaded on login nodes; large outputs go on `$SCRATCH`, which is purged). Development and small pilots run locally.
 
@@ -12,7 +12,7 @@ Training and large-scale generation run on **TACC** (Slurm, no Docker, so use Ap
 
 ```bash
 uv sync                                        # create .venv (Python >=3.10) with dev deps
-uv run pytest                                  # all tests
+uv run pytest                                  # all tests (sandbox tests skip if Docker isn't running)
 uv run pytest tests/test_splits.py::test_write_freeze_guard_and_load_roundtrip   # one test
 uv run python -m codegen.data.splits --download  # fetch pinned APPS + TACO-verified (~3.3 GB) and build splits
 uv run python -m codegen.data.splits           # rebuild splits, ~5 min (refuses to change eval.json without --force)
@@ -29,6 +29,12 @@ uv run python -m codegen.data.splits           # rebuild splits, ~5 min (refuses
 - `splits.py` writes id lists `data/splits/{eval,dev,gepa_val,gepa_train,grpo_train}.json` plus `manifest.json` and `dropped.json` (committed), and full problems to `data/processed/*.jsonl` (gitignored). The fixed splits are stratified by (source, difficulty, kind), and `grpo_train` gets everything left.
 - Leakage rules (`dedup.py`: 5-word-shingle Jaccard ≥ 0.35 after stripping LaTeX, `$` and `<image>`, a cutoff chosen from a measured gap between copies and distinct problems): drop pool problems that near-duplicate **any** APPS-test problem (TACO contains APPS-test verbatim). Each duplicate cluster in the pool keeps one problem, the one with the most tests.
 - `eval` uses its own RNG stream, so train-side config changes never alter it. **`eval.json` is frozen once committed.** Use `load_split(name)`, which reads `data/processed/` and checks it against the committed ids.
+
+## Sandbox (`src/codegen/sandbox/`)
+
+- `Sandbox(workers=N)` keeps N long-running Docker containers, with no network, no host mounts, a read-only filesystem except a small `/tmp`, memory and process caps, no capabilities, and an unprivileged user. Each container runs `worker.py` (stdlib only, copied into the image), which takes one JSON job per line.
+- Each test is a fresh `python solution.py` with limits (4 s per test, 30 s per program, then `skipped`). After every job the worker kills stray processes and empties `/tmp`. **Expected outputs never enter the container.** The sandbox returns raw stdout plus an outcome, and comparison happens on the host.
+- `Sandbox()` rebuilds the image on start (Docker caches it), so edits to `worker.py` take effect. On TACC (no Docker), the same image must be converted for Apptainer. Whether unprivileged network isolation works there is still unverified.
 
 ## Research question
 
