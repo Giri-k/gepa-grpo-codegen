@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. Done so far: the data pipeline (Phase 1), plus the code extractor (`extract.py`) and Docker sandbox (`sandbox/`) of the shared evaluator (Phase 2). Output comparison and scoring are next.
+This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. Done so far: the data pipeline (Phase 1) and the shared evaluator (Phase 2): code extractor (`extract.py`), Docker sandbox (`sandbox/`), answer checker (`judge.py`), and official-solution validation of every split problem (`data/validate.py`). Next: the baseline pilot with Qwen3-4B.
 
 Training and large-scale generation run on **TACC** (Slurm, no Docker, so use Apptainer; models and data are pre-downloaded on login nodes; large outputs go on `$SCRATCH`, which is purged). Development and small pilots run locally.
 
@@ -15,7 +15,9 @@ uv sync                                        # create .venv (Python >=3.10) wi
 uv run pytest                                  # all tests (sandbox tests skip if Docker isn't running)
 uv run pytest tests/test_splits.py::test_write_freeze_guard_and_load_roundtrip   # one test
 uv run python -m codegen.data.splits --download  # fetch pinned APPS + TACO-verified (~3.3 GB) and build splits
+uv run python -m codegen.data.validate         # run official solutions in the sandbox (Docker), cached in data/splits/validation.json
 uv run python -m codegen.data.splits           # rebuild splits, ~5 min (refuses to change eval.json without --force)
+uv run python scripts/sandbox_demo.py          # see the sandbox handle a few small programs
 ```
 
 ## Data pipeline (`src/codegen/data/`)
@@ -28,13 +30,18 @@ uv run python -m codegen.data.splits           # rebuild splits, ~5 min (refuses
 - `apps.py` / `taco.py` download raw files from HF at **pinned revisions with SHA-256 checks**. Loading fails on a checksum mismatch, which has already caught a hand-edited raw file once. Raw files live in gitignored `data/raw/`. Both datasets share the APPS record format and `apps.parse_problem`. Stdio tests are normalized to strings. Call-based outputs are kept raw (APPS often wraps the return value in a one-element list, so the evaluator must accept both forms). Ids are `train-0001`, `test-0042`, `taco-01234`.
 - `splits.py` writes id lists `data/splits/{eval,dev,gepa_val,gepa_train,grpo_train}.json` plus `manifest.json` and `dropped.json` (committed), and full problems to `data/processed/*.jsonl` (gitignored). The fixed splits are stratified by (source, difficulty, kind), and `grpo_train` gets everything left.
 - Leakage rules (`dedup.py`: 5-word-shingle Jaccard ≥ 0.35 after stripping LaTeX, `$` and `<image>`, a cutoff chosen from a measured gap between copies and distinct problems): drop pool problems that near-duplicate **any** APPS-test problem (TACO contains APPS-test verbatim). Each duplicate cluster in the pool keeps one problem, the one with the most tests.
+- Validity rules: training problems with "print any valid answer" wording are excluded (expected outputs came from one solution, so a different correct answer fails, and validation can't detect it). `validate.py` runs up to 5 official solutions per problem, and training splits keep only `valid` ones. Eval is never filtered; its labels let us report pass@1 on all 500 and on the valid subset. Adding pool problems means re-running `validate` (only uncached problems run) before `splits`.
 - `eval` uses its own RNG stream, so train-side config changes never alter it. **`eval.json` is frozen once committed.** Use `load_split(name)`, which reads `data/processed/` and checks it against the committed ids.
 
 ## Sandbox (`src/codegen/sandbox/`)
 
 - `Sandbox(workers=N)` keeps N long-running Docker containers, with no network, no host mounts, a read-only filesystem except a small `/tmp`, memory and process caps, no capabilities, and an unprivileged user. Each container runs `worker.py` (stdlib only, copied into the image), which takes one JSON job per line.
-- Each test is a fresh `python solution.py` with limits (4 s per test, 30 s per program, then `skipped`). After every job the worker kills stray processes and empties `/tmp`. **Expected outputs never enter the container.** The sandbox returns raw stdout plus an outcome, and comparison happens on the host.
+- Each test is a fresh `python solution.py` with limits (4 s per test, 30 s per program, then `skipped`; 4 MB stdout cap, above the largest expected output of 1.4 MB). After every job the worker kills stray processes and empties `/tmp`. **Expected outputs never enter the container.** The sandbox returns raw stdout plus an outcome, and comparison happens on the host.
 - `Sandbox()` rebuilds the image on start (Docker caches it), so edits to `worker.py` take effect. On TACC (no Docker), the same image must be converted for Apptainer. Whether unprivileged network isolation works there is still unverified.
+
+## Judge (`src/codegen/judge.py`)
+
+`evaluate_many(items, sandbox)` takes (problem, model text) pairs and runs extract → sandbox → compare. `evaluate_code_many` does the same for plain code (official solutions). Stdio comparison works on whitespace tokens, allows 1e-6 tolerance only where the expected token is a decimal, and is otherwise exact and case-sensitive (validation found 0 official solutions failing on case). Call-based answers are wrapped by a harness and their return value compared as JSON, accepting APPS's `[x]` wrapping. `Evaluation.reward` is the fraction of tests passed (the GRPO reward), `passed_all` is pass@1, and `feedback` is text for GEPA.
 
 ## Research question
 

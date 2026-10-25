@@ -10,7 +10,12 @@ Training-pool rules:
 - at least `min_tests` tests. Program-style APPS-train intro/interview problems
   have exactly one test, usually the example printed in the statement, which a
   model can pass by echoing the example output.
-- a reference solution, so the tests can be validated later
+- a reference solution, so the tests can be validated
+- no "print any valid answer" wording: the expected outputs come from one
+  solution, so a different correct answer would be graded wrong (validation
+  can't catch this, since that solution always matches)
+- once data/splits/validation.json exists: an official solution passes every
+  test (see codegen.data.validate)
 
 Leakage rules:
 - pool problems that near-duplicate *any* APPS-test problem are dropped (TACO
@@ -28,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -35,6 +41,11 @@ from pathlib import Path
 from codegen.data import apps, dedup, taco
 
 FIXED_SPLITS = ("dev", "gepa_val", "gepa_train")  # filled in this order
+# Statement wording for problems that accept several answers. Kept narrow: wider
+# patterns ("many such", "several ways to") mostly matched unique-answer problems.
+ANY_ANSWER = re.compile(
+    r"(print|output) any|any of them|multiple (possible |valid |correct )?(answers|solutions)", re.I
+)
 ALL_SPLITS = ("eval",) + FIXED_SPLITS + ("grpo_train",)
 
 
@@ -54,15 +65,19 @@ class SplitConfig:
     kinds: tuple[str, ...] = ("stdio",)
     min_tests: int = 5
     require_solution: bool = True
+    drop_any_answer: bool = True
     # Measured on the real pool vs APPS-test: copies (formatted differently) score
     # 0.45-1.0, unrelated problems <= 0.22, and nothing falls in between.
     dedup_threshold: float = 0.35
+    # Validation labels (codegen.data.validate) allowed in the training splits.
+    keep_labels: tuple[str, ...] = ("valid",)
 
 
 @dataclass
 class SplitResult:
     ids: dict[str, list[str]]
-    # reason -> [(dropped uid, uid it duplicates, jaccard)]
+    # reason -> [(dropped uid, uid it duplicates, jaccard)];
+    # for failed_validation: [(dropped uid, validation label, None)]
     dropped: dict[str, list[tuple[str, str, float]]]
 
 
@@ -105,6 +120,7 @@ def training_pool(
             and p.test_kind in cfg.kinds
             and p.n_tests >= cfg.min_tests
             and (p.n_solutions > 0 or not cfg.require_solution)
+            and not (cfg.drop_any_answer and ANY_ANSWER.search(p.question))
         )
 
     return [p for p in apps_train if usable(p, cfg.apps_difficulties)] + [
@@ -117,7 +133,10 @@ def build_splits(
     apps_test: list[apps.Problem],
     taco_problems: list[apps.Problem],
     cfg: SplitConfig,
+    validation: dict[str, dict] | None = None,
 ) -> SplitResult:
+    """`validation` (uid -> record from codegen.data.validate) drops pool problems
+    whose label is not in `cfg.keep_labels`. Eval is never filtered."""
     eval_set = sample_eval(apps_test, cfg)
     pool = {p.uid: p for p in training_pool(apps_train, taco_problems, cfg)}
     test_uids = {p.uid for p in apps_test}
@@ -142,6 +161,17 @@ def build_splits(
         keep = min(g, key=lambda u: (-pool[u].n_tests, u))
         reps.append(keep)
         dropped["dup_within_pool"] += [(u, keep, score.get((u, keep))) for u in g if u != keep]
+
+    if validation is not None:
+        missing = [u for u in reps if u not in validation]
+        if missing:
+            raise ValueError(
+                f"{len(missing)} pool problems are not validated (e.g. {missing[0]}); "
+                "run python -m codegen.data.validate"
+            )
+        bad = {u for u in reps if validation[u]["label"] not in cfg.keep_labels}
+        dropped["failed_validation"] = [(u, validation[u]["label"], None) for u in sorted(bad)]
+        reps = [u for u in reps if u not in bad]
 
     if sum(cfg.sizes.values()) > len(reps):
         raise ValueError(f"pool has {len(reps)} problems, fixed splits need {sum(cfg.sizes.values())}")
@@ -251,7 +281,11 @@ def main() -> None:
     for label, ps, skipped in (("apps train", apps_train, s1), ("apps test", apps_test, s2), ("taco", taco_problems, s3)):
         print(f"{label:>10}: {len(ps)} usable, skipped {dict(skipped)}")
 
-    result = build_splits(apps_train, apps_test, taco_problems, cfg)
+    validation_path = args.out / "validation.json"
+    validation = json.loads(validation_path.read_text()) if validation_path.exists() else None
+    if validation is None:
+        print(f"no {validation_path}: splits are not filtered by official-solution checks")
+    result = build_splits(apps_train, apps_test, taco_problems, cfg, validation)
     write_splits(result, cfg, apps_train + apps_test + taco_problems, args.out, args.force, args.processed)
     for name in ALL_SPLITS:
         print(f"{name:>10}: {len(result.ids[name])}")

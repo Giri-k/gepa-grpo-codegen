@@ -108,6 +108,13 @@ def test_copies_of_any_apps_test_problem_dropped(data):
     assert "taco-00002" not in placed(r) and "train-0020" not in placed(r)
 
 
+def test_any_answer_problems_excluded(data):
+    train, test, taco = data
+    q = taco[8].question + " If there are multiple answers, print any of them."
+    taco[8] = problem("taco-00008", "MEDIUM", question=q, n_tests=50)
+    assert "taco-00008" not in placed(run((train, test, taco)))
+
+
 def test_cross_dataset_duplicate_keeps_copy_with_most_tests(data):
     r = run(data)
     assert "taco-00004" in placed(r)
@@ -130,6 +137,28 @@ def test_pool_too_small_raises(data):
     huge = SplitConfig(**{**CFG.__dict__, "sizes": {**CFG.sizes, "dev": 10_000}})
     with pytest.raises(ValueError, match="pool has"):
         run(data, huge)
+
+
+def test_validation_filters_training_splits_only(data):
+    plain = run(data)
+    training = [u for name in TRAINING for u in plain.ids[name]]
+    validation = {u: {"label": "valid"} for ids in plain.ids.values() for u in ids}
+    bad = training[:5]
+    validation |= {u: {"label": "wrong_answer"} for u in bad}
+    validation[plain.ids["eval"][0]] = {"label": "wrong_answer"}
+
+    train, test, taco = data
+    r = build_splits(train, test, taco, CFG, validation)
+    assert r.ids["eval"] == plain.ids["eval"]  # eval is never filtered
+    assert not set(bad) & set(placed(r))
+    assert sorted(u for u, _, _ in r.dropped["failed_validation"]) == sorted(bad)
+    for name, n in CFG.sizes.items():
+        assert len(r.ids[name]) == n  # fixed splits keep their size; grpo_train shrinks
+    assert len(r.ids["grpo_train"]) == len(plain.ids["grpo_train"]) - len(bad)
+
+    del validation[training[-1]]
+    with pytest.raises(ValueError, match="not validated"):
+        build_splits(train, test, taco, CFG, validation)
 
 
 def test_write_freeze_guard_and_load_roundtrip(data, tmp_path):

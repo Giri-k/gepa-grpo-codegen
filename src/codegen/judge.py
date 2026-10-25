@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from codegen.data.apps import Problem
 from codegen.extract import extract_code
@@ -56,6 +56,8 @@ class Evaluation:
     n_tests: int
     code: str | None
     feedback: str  # plain-text summary of what went wrong, for GEPA's reflection
+    # What each test printed; only filled when asked for (keep_stdout=True).
+    stdouts: tuple[str, ...] = field(default=(), repr=False)
 
     @property
     def passed(self) -> int:
@@ -173,35 +175,49 @@ _STATUS_FEEDBACK = {
 }
 
 
-def evaluate_many(
-    items: list[tuple[Problem, str]], sandbox: Sandbox, limits: Limits | None = None
+def evaluate_code_many(
+    items: list[tuple[Problem, str]], sandbox: Sandbox, limits: Limits | None = None,
+    keep_stdout: bool = False,
 ) -> list[Evaluation]:
-    """Evaluate (problem, model output text) pairs. Runs execute in parallel."""
-    extractions = [extract_code(text) for _, text in items]
-    jobs, job_index = [], {}
-    for k, ((problem, _), ex) in enumerate(zip(items, extractions)):
-        if ex.code is None:
-            continue
-        program = call_program(ex.code, problem.fn_name) if problem.test_kind == "call" else ex.code
-        inputs = [json.dumps(x) for x in problem.inputs] if problem.test_kind == "call" else problem.inputs
-        job_index[k] = len(jobs)
-        jobs.append((program, inputs))
+    """Evaluate (problem, program code) pairs. Runs execute in parallel."""
+    jobs = []
+    for problem, code in items:
+        if problem.test_kind == "call":
+            jobs.append((call_program(code, problem.fn_name), [json.dumps(x) for x in problem.inputs]))
+        else:
+            jobs.append((code, problem.inputs))
     runs = sandbox.run_many(jobs, limits)
 
     results = []
-    for k, ((problem, _), ex) in enumerate(zip(items, extractions)):
-        base = dict(uid=problem.uid, n_tests=problem.n_tests, code=ex.code)
-        if ex.code is None:
-            results.append(Evaluation(status=ex.method, verdicts=(), feedback=_STATUS_FEEDBACK[ex.method], **base))
-            continue
-        run = runs[job_index[k]]
+    for (problem, code), run in zip(items, runs):
+        base = dict(uid=problem.uid, n_tests=problem.n_tests, code=code)
         if run.status != "ok":
             results.append(Evaluation(status=run.status, verdicts=(), feedback=f"Code did not run: {run.error}", **base))
             continue
         verdicts, notes = _judge_tests(problem, run)
         summary = f"Passed {verdicts.count('passed')}/{problem.n_tests} tests."
-        results.append(Evaluation(status="ok", verdicts=tuple(verdicts), feedback="\n".join([summary] + notes), **base))
+        stdouts = tuple(t.stdout for t in run.tests) if keep_stdout else ()
+        results.append(Evaluation(
+            status="ok", verdicts=tuple(verdicts), feedback="\n".join([summary] + notes), stdouts=stdouts, **base
+        ))
     return results
+
+
+def evaluate_many(
+    items: list[tuple[Problem, str]], sandbox: Sandbox, limits: Limits | None = None
+) -> list[Evaluation]:
+    """Evaluate (problem, model output text) pairs. Runs execute in parallel."""
+    extractions = [extract_code(text) for _, text in items]
+    ran = iter(evaluate_code_many(
+        [(p, ex.code) for (p, _), ex in zip(items, extractions) if ex.code is not None], sandbox, limits
+    ))
+    return [
+        next(ran) if ex.code is not None else Evaluation(
+            uid=p.uid, status=ex.method, verdicts=(), n_tests=p.n_tests, code=None,
+            feedback=_STATUS_FEEDBACK[ex.method],
+        )
+        for (p, _), ex in zip(items, extractions)
+    ]
 
 
 def evaluate(problem: Problem, text: str, sandbox: Sandbox, limits: Limits | None = None) -> Evaluation:

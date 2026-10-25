@@ -41,7 +41,7 @@ class Limits:
     timeout: float = 4.0  # seconds per test
     budget: float = 30.0  # seconds for all tests of one program; later tests are skipped
     memory_mb: int = 1024  # per test process
-    output_bytes: int = 1_000_000  # per stream
+    output_bytes: int = 4_000_000  # per stream; the largest expected output in any split is 1.4 MB
 
 
 @dataclass(frozen=True)

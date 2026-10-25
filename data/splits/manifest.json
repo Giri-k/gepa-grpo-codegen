@@ -40,7 +40,11 @@
     ],
     "min_tests": 5,
     "require_solution": true,
-    "dedup_threshold": 0.35
+    "drop_any_answer": true,
+    "dedup_threshold": 0.35,
+    "keep_labels": [
+      "valid"
+    ]
   },
   "splits": {
     "eval": {
@@ -56,10 +60,10 @@
     },
     "dev": {
       "n": 200,
-      "median_tests": 102,
+      "median_tests": 103,
       "by_source/difficulty/kind": {
-        "taco/EASY/stdio": 106,
-        "taco/MEDIUM/stdio": 32,
+        "taco/EASY/stdio": 107,
+        "taco/MEDIUM/stdio": 31,
         "taco/MEDIUM_HARD/stdio": 62
       }
     },
@@ -67,8 +71,8 @@
       "n": 100,
       "median_tests": 102,
       "by_source/difficulty/kind": {
-        "taco/EASY/stdio": 53,
-        "taco/MEDIUM/stdio": 16,
+        "taco/EASY/stdio": 54,
+        "taco/MEDIUM/stdio": 15,
         "taco/MEDIUM_HARD/stdio": 31
       }
     },
@@ -76,24 +80,25 @@
       "n": 100,
       "median_tests": 102,
       "by_source/difficulty/kind": {
-        "taco/EASY/stdio": 53,
-        "taco/MEDIUM/stdio": 16,
+        "taco/EASY/stdio": 54,
+        "taco/MEDIUM/stdio": 15,
         "taco/MEDIUM_HARD/stdio": 31
       }
     },
     "grpo_train": {
-      "n": 893,
+      "n": 756,
       "median_tests": 102,
       "by_source/difficulty/kind": {
-        "taco/EASY/stdio": 471,
-        "taco/MEDIUM/stdio": 146,
-        "taco/MEDIUM_HARD/stdio": 274,
-        "train/interview/stdio": 2
+        "taco/EASY/stdio": 404,
+        "taco/MEDIUM/stdio": 118,
+        "taco/MEDIUM_HARD/stdio": 233,
+        "train/interview/stdio": 1
       }
     }
   },
   "dropped_counts": {
-    "dup_of_apps_test": 2421,
-    "dup_within_pool": 130
+    "dup_of_apps_test": 2237,
+    "dup_within_pool": 115,
+    "failed_validation": 3
   }
 }
