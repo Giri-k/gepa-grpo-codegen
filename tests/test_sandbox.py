@@ -2,13 +2,13 @@ from dataclasses import replace
 
 import pytest
 
-from codegen.sandbox import Limits, Sandbox, docker_available
+from codegen.sandbox import Limits, Sandbox, sandbox_available
 from codegen.sandbox.runner import syntax_error
 
 FAST = Limits(timeout=1.0, budget=10.0, memory_mb=256, output_bytes=10_000)
 
-# Syntax checks run on the host; everything else needs Docker.
-needs_docker = pytest.mark.skipif(not docker_available(), reason="Docker is not running")
+# Syntax checks run on the host; everything else needs a sandbox backend.
+needs_docker = pytest.mark.skipif(not sandbox_available(), reason="no sandbox backend (Docker or Apptainer)")
 
 
 @pytest.fixture(scope="module")

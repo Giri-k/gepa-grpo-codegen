@@ -4,10 +4,10 @@ import pytest
 
 from codegen.data.apps import Problem
 from codegen.judge import evaluate, evaluate_many, tokens_match, values_match
-from codegen.sandbox import Limits, Sandbox, docker_available
+from codegen.sandbox import Limits, Sandbox, sandbox_available
 
 FAST = Limits(timeout=1.0, budget=10.0, memory_mb=256, output_bytes=10_000)
-needs_docker = pytest.mark.skipif(not docker_available(), reason="Docker is not running")
+needs_docker = pytest.mark.skipif(not sandbox_available(), reason="no sandbox backend (Docker or Apptainer)")
 
 DOUBLE = Problem(
     uid="t-double", source_split="test", source_id=0, difficulty="introductory",
