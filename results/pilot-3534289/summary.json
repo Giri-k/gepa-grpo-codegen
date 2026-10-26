@@ -1,0 +1,59 @@
+{
+  "problems": 50,
+  "samples": 400,
+  "pass@1": 0.3,
+  "pass@1_ci95": [
+    0.195,
+    0.415
+  ],
+  "mean_reward": 0.3153,
+  "problems_all_fail": 28,
+  "problems_mixed": 14,
+  "problems_all_pass": 8,
+  "pass@1_by_difficulty": {
+    "EASY": {
+      "problems": 23,
+      "pass@1": 0.4891
+    },
+    "MEDIUM": {
+      "problems": 9,
+      "pass@1": 0.0833
+    },
+    "MEDIUM_HARD": {
+      "problems": 18,
+      "pass@1": 0.1667
+    }
+  },
+  "status": {
+    "unfinished_think": 261,
+    "ok": 128,
+    "no_code": 8,
+    "syntax_error": 3
+  },
+  "test_verdicts": {
+    "passed": 15000,
+    "wrong_answer": 278
+  },
+  "truncated": 0.6925,
+  "mean_completion_tokens": 7290,
+  "model": "Qwen/Qwen3-4B-Thinking-2507",
+  "lora": null,
+  "system_prompt": "original",
+  "split": "dev",
+  "sampling": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 8192,
+    "seed": 0
+  },
+  "generate_seconds": 2509.2,
+  "tokens_per_second": 1162.2,
+  "score_seconds": 15.2,
+  "sandbox_workers": 126,
+  "sandbox_isolation": {
+    "backend": "apptainer",
+    "network": "apptainer --net --network none",
+    "pids_limit": false
+  }
+}
