@@ -2,10 +2,10 @@ import pytest
 
 from codegen.data.apps import Problem
 from codegen.data.validate import label, validate
-from codegen.sandbox import Limits, Sandbox, docker_available
+from codegen.sandbox import Limits, Sandbox, sandbox_available
 
 FAST = Limits(timeout=1.0, budget=10.0, memory_mb=256, output_bytes=10_000)
-needs_docker = pytest.mark.skipif(not docker_available(), reason="Docker is not running")
+needs_docker = pytest.mark.skipif(not sandbox_available(), reason="no sandbox backend (Docker or Apptainer)")
 
 PY2 = "n = input()\nprint n * 2"
 GOOD = "print(int(input()) * 2)"
