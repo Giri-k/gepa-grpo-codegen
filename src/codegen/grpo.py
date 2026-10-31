@@ -192,6 +192,9 @@ def main() -> None:
         warmup_steps=3,
         max_grad_norm=1.0,
         bf16=True,
+        # transformers 4.57 loads in fp32 without a dtype (16 GB/GPU for 4B), which
+        # leaves vLLM too little free memory to start; bf16 halves it.
+        model_init_kwargs={"dtype": "bfloat16"},
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         # One completion per forward/backward; the step's completions are accumulated.
