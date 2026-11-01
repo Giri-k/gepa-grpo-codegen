@@ -6,6 +6,12 @@
 #   sbatch -p gpu-a100-dev -t 01:00:00 tacc/grpo.sh --max-steps 3
 #   sbatch tacc/grpo.sh --max-steps 80
 #   OUT=$SCRATCH/gepa-grpo/grpo-<id> sbatch tacc/grpo.sh --max-steps 80 --resume   # continue a run
+#   sbatch -p gpu-a100-dev -t 02:00:00 --exclude=c301-002 tacc/grpo.sh --max-steps 40
+#
+# Time limits: training saves and stops ~12 min before the job's limit. If
+# --max-steps isn't reached, the job resubmits itself with --resume (same queue,
+# limit, output directory and W&B run), up to MAX_PARTS jobs (default 5); EXCLUDE
+# keeps continuations off bad nodes (default: the first job's --exclude).
 #
 # Checkpoints (LoRA adapter + optimizer) go to $SCRATCH/gepa-grpo/grpo-<jobid>/;
 # the final adapter and logs are copied to $WORK/gepa-grpo-runs/.
@@ -35,20 +41,34 @@ export CODEGEN_SANDBOX_SIF=$WORK/sif/python311.sif
 export CUDA_VISIBLE_DEVICES=0,1,2
 export TOKENIZERS_PARALLELISM=false
 
-OUT=${OUT:-$SCRATCH/gepa-grpo/grpo-$SLURM_JOB_ID}
+export OUT=${OUT:-$SCRATCH/gepa-grpo/grpo-$SLURM_JOB_ID} PART=${PART:-1}
 NAME=$(basename "$OUT")
+MAX_PARTS=${MAX_PARTS:-5}
+export EXCLUDE=${EXCLUDE:-$(scontrol show job "$SLURM_JOB_ID" | grep -o 'ExcNodeList=[^ ]*' | cut -d= -f2 | grep -v null)}
 mkdir -p "$OUT"
-echo "== $(date) $NAME on $(hostname), args: $*"
+# Minutes left ([D-]H:MM:SS); stop training 12 min before the end to save and copy.
+LIMIT_STR=$(squeue -h -j "$SLURM_JOB_ID" -o %l)
+LEFT_MIN=$(squeue -h -j "$SLURM_JOB_ID" -o %L | awk -F'[-:]' '{ if (NF == 4) print $1*1440 + $2*60 + $3; else if (NF == 3) print $1*60 + $2; else print $1 }')
+DEADLINE=$(( $(date +%s) + 60 * (LEFT_MIN - 12) ))
+echo "== $(date) $NAME part $PART/$MAX_PARTS on $(hostname) (limit $LIMIT_STR, stop by $(date -d @$DEADLINE +%H:%M)), args: $*"
 nvidia-smi --query-gpu=name,memory.total --format=csv
 if [ "$(nvidia-smi -L | grep -c '^GPU')" -lt 3 ]; then
   echo "== $(date) only $(nvidia-smi -L | grep -c '^GPU') GPUs visible on $(hostname); resubmit with --exclude=$(hostname -s)"
   exit 1
 fi
 
+# Read the model from the node's disk: three processes loading it cold from $WORK took ~5 min.
+MODEL_DIR=hub/models--Qwen--Qwen3-4B-Thinking-2507
+if mkdir -p /tmp/hf/hub && cp -a "$HF_HOME/$MODEL_DIR" /tmp/hf/hub/; then
+  export HF_HOME=/tmp/hf
+  echo "== $(date) model copied to /tmp/hf"
+fi
+
 WANDB=()
 WANDB_PROJECT=${WANDB_PROJECT:-gepa-grpo-codegen}
 if [ "$WANDB_PROJECT" != none ]; then
-  export WANDB_NAME=${WANDB_NAME:-$NAME} WANDB_DIR=$OUT
+  # One W&B run across continuation jobs.
+  export WANDB_NAME=${WANDB_NAME:-$NAME} WANDB_DIR=$OUT WANDB_RUN_ID=${WANDB_RUN_ID:-$NAME} WANDB_RESUME=allow
   # Ask wandb itself: newer versions store the key under a CoreWeave host in ~/.netrc.
   if ! .venv-gpu/bin/python -c "import sys, wandb; sys.exit(0 if wandb.Api().api_key else 1)" 2>/dev/null; then
     export WANDB_MODE=offline
@@ -64,7 +84,7 @@ vmstat -t 5 >> "$OUT/cpu.log" &
 VMSTAT=$!
 
 .venv-gpu/bin/accelerate launch --num_processes 3 --num_machines 1 --mixed_precision bf16 --dynamo_backend no \
-  -m codegen.grpo --out "$OUT" "${WANDB[@]}" "$@"
+  -m codegen.grpo --out "$OUT" --deadline "$DEADLINE" "${WANDB[@]}" "$@"
 status=$?
 kill $SMI $VMSTAT 2>/dev/null
 .venv-gpu/bin/python -m codegen.perf_report "$OUT"
@@ -76,4 +96,16 @@ state=$OUT/trainer_state.json  # written at the end; a run cut short only has ch
 [ -f "$state" ] || state=$(ls -d "$OUT"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)/trainer_state.json
 cp "$state" "$OUT"/run_args.json "$OUT"/perf.rank*.jsonl "$OUT"/gpu.csv "results/$NAME/" 2>/dev/null
 echo "== $(date) done (exit $status); outputs in $OUT"
+
+# Stopped at the deadline with a checkpoint: continue in a new job.
+if [ $status -eq 0 ] && [ ! -d "$OUT/final" ] && ls -d "$OUT"/checkpoint-* >/dev/null 2>&1; then
+  ARGS=("$@")
+  [[ " $* " == *" --resume "* ]] || ARGS+=(--resume)
+  if [ "$PART" -ge "$MAX_PARTS" ]; then
+    echo "== MAX_PARTS=$MAX_PARTS reached; continue with: OUT=$OUT sbatch -p $SLURM_JOB_PARTITION -t $LIMIT_STR tacc/grpo.sh ${ARGS[*]}"
+  else
+    echo "== $(date) submitting part $((PART + 1))"
+    PART=$((PART + 1)) sbatch -p "$SLURM_JOB_PARTITION" -t "$LIMIT_STR" ${EXCLUDE:+--exclude="$EXCLUDE"} tacc/grpo.sh "${ARGS[@]}"
+  fi
+fi
 exit $status

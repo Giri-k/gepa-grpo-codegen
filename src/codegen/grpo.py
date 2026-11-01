@@ -27,6 +27,10 @@ generation throughput, and peak torch memory. `python -m codegen.perf_report <ou
 summarizes it together with the GPU/CPU samples that tacc/grpo.sh records.
 With --wandb-project, TRL's metrics, the perf rows (perf/*) and W&B's own GPU/CPU
 monitoring also go to Weights & Biases.
+
+Time limits: with --deadline (a Unix time), training saves a checkpoint and stops
+when the next step might not finish in time; the final adapter is only written
+once --max-steps is reached, so a stopped run is continued with --resume.
 """
 
 from __future__ import annotations
@@ -89,6 +93,32 @@ def time_profiled_blocks(timers: defaultdict) -> None:
         timers[name] += time.perf_counter() - start
 
     profiling.profiling_context = grpo_trainer.profiling_context = timed
+
+
+def deadline_callback(deadline: float):
+    """A TrainerCallback that saves and stops when another step might pass `deadline`.
+
+    Rank 0 decides and broadcasts, so every rank stops at the same step."""
+    import torch
+    import torch.distributed as dist
+    from transformers import TrainerCallback
+
+    class Deadline(TrainerCallback):
+        def on_step_begin(self, args, state, control, **kwargs):
+            self.start = time.time()
+
+        def on_step_end(self, args, state, control, **kwargs):
+            self.longest = max(getattr(self, "longest", 0.0), time.time() - self.start)
+            stop = torch.tensor([time.time() + 1.15 * self.longest > deadline],
+                                device="cuda" if dist.is_initialized() else "cpu")  # NCCL needs CUDA
+            if dist.is_initialized():
+                dist.broadcast(stop, 0)
+            if stop.item() and state.global_step < state.max_steps:
+                print(f"== step {state.global_step}: stopping before the deadline (longest step "
+                      f"{self.longest:.0f}s); continue with --resume", flush=True)
+                control.should_save = control.should_training_stop = True
+
+    return Deadline()
 
 
 def perf_callback(path: Path, timers: defaultdict, reward: SandboxReward, rank: int):
@@ -164,6 +194,7 @@ def main() -> None:
     ap.add_argument("--save-steps", type=int, default=10)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true", help="continue from the latest checkpoint in --out")
+    ap.add_argument("--deadline", type=float, help="Unix time to save and stop by (continue with --resume)")
     ap.add_argument("--wandb-project", help="log to this Weights & Biases project (run name: $WANDB_NAME)")
     args = ap.parse_args()
 
@@ -248,7 +279,8 @@ def main() -> None:
         train_dataset=dataset,
         processing_class=tok,
         peft_config=peft_config,
-        callbacks=[perf_callback(args.out / f"perf.rank{rank}.jsonl", timers, reward, rank)],
+        callbacks=[perf_callback(args.out / f"perf.rank{rank}.jsonl", timers, reward, rank)]
+        + ([deadline_callback(args.deadline)] if args.deadline else []),
     )
     if trainer.accelerator.is_main_process:
         args.out.mkdir(parents=True, exist_ok=True)
@@ -262,7 +294,8 @@ def main() -> None:
     finally:
         reward.close()
     trainer.save_state()  # trainer_state.json: per-step reward, truncation, zero-std groups
-    trainer.save_model(str(args.out / "final"))  # the LoRA adapter, loadable by codegen.generate --lora
+    if trainer.state.global_step >= args.max_steps:  # not when stopped by --deadline
+        trainer.save_model(str(args.out / "final"))  # the LoRA adapter, loadable by codegen.generate --lora
 
 
 if __name__ == "__main__":
