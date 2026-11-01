@@ -218,6 +218,11 @@ def main() -> None:
         vllm_gpu_memory_utilization=args.vllm_gpu_memory,
         vllm_max_model_length=args.max_prompt_tokens + args.max_tokens,
         vllm_enable_sleep_mode=True,
+        # TRL's default "sequence_mask" multiplies the vLLM/trainer ratio over all
+        # ~7k tokens, so it lands near 0 or above the cap (masked): step 1 of the
+        # smoke test kept ~6% of the signal. Per-token truncation (TIS) doesn't.
+        vllm_importance_sampling_mode="token_truncate",
+        vllm_importance_sampling_cap=2.0,
         logging_steps=1,
         save_steps=args.save_steps,
         save_total_limit=3,
