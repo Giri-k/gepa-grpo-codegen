@@ -147,7 +147,10 @@ def _probe(cmd: list[str]) -> str | None:
 def _apptainer_setup(sif: str) -> tuple[list[str], list[str], dict]:
     """Pick flags and a command prefix that this node supports. Returns
     (apptainer flags, prefix for the worker command, description)."""
-    pids = _probe(_apptainer_cmd([], sif, _PROBE_PIDS))
+    for _ in range(3):  # a first start from a slow filesystem can time out (job 3549369)
+        pids = _probe(_apptainer_cmd([], sif, _PROBE_PIDS))
+        if pids is not None:
+            break
     if pids is None or int(pids) > 10:
         # Without a PID namespace the worker's clean-up would kill the user's
         # other processes on the node (vLLM, the trainer). Refuse.

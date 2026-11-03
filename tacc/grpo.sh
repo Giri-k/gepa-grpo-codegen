@@ -67,6 +67,11 @@ if mkdir -p /tmp/hf/hub && cp -a "$SRC/$MODEL_DIR" /tmp/hf/hub/; then
   export HF_HOME=/tmp/hf
   echo "== $(date) model copied to /tmp/hf from $SRC"
 fi
+# The sandbox image too: three ranks starting it at once from a slow $WORK timed out
+# the sandbox's isolation probe (job 3549369).
+SIF_SRC=$SCRATCH/sif/python311.sif
+[ -f "$SIF_SRC" ] || SIF_SRC=$CODEGEN_SANDBOX_SIF
+cp "$SIF_SRC" /tmp/python311.sif && export CODEGEN_SANDBOX_SIF=/tmp/python311.sif
 
 WANDB=()
 WANDB_PROJECT=${WANDB_PROJECT:-gepa-grpo-codegen}
