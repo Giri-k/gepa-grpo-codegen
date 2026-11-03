@@ -58,10 +58,14 @@ if [ "$(nvidia-smi -L | grep -c '^GPU')" -lt 3 ]; then
 fi
 
 # Read the model from the node's disk: three processes loading it cold from $WORK took ~5 min.
+# Copy it from $SCRATCH when a copy is there ($WORK read at ~4 MB/s on 2026-11-03: a
+# 15 min copy, vs 43 s from $SCRATCH); scratch is purged, so fall back to $WORK.
 MODEL_DIR=hub/models--Qwen--Qwen3-4B-Thinking-2507
-if mkdir -p /tmp/hf/hub && cp -a "$HF_HOME/$MODEL_DIR" /tmp/hf/hub/; then
+SRC=$SCRATCH/hf
+[ -d "$SRC/$MODEL_DIR/snapshots" ] || SRC=$HF_HOME
+if mkdir -p /tmp/hf/hub && cp -a "$SRC/$MODEL_DIR" /tmp/hf/hub/; then
   export HF_HOME=/tmp/hf
-  echo "== $(date) model copied to /tmp/hf"
+  echo "== $(date) model copied to /tmp/hf from $SRC"
 fi
 
 WANDB=()
