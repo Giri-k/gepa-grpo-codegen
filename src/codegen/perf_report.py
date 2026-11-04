@@ -52,10 +52,10 @@ def gpu_table(run: Path) -> None:
     with open(path) as f:
         for r in csv.DictReader(f, skipinitialspace=True):
             try:
-                samples[r["index"]].append((float(r["utilization.gpu [%]"]), float(r["memory.used [MiB]"]) / 1024,
-                                            float(r["power.draw [W]"])))
-            except (KeyError, ValueError):  # header repeated or a partial last line
+                sample = (float(r["utilization.gpu [%]"]), float(r["memory.used [MiB]"]) / 1024, float(r["power.draw [W]"]))
+            except (KeyError, ValueError, TypeError):  # header repeated by a resumed job, or a partial last line
                 continue
+            samples[r["index"]].append(sample)
     print("\nGPUs (nvidia-smi every 5 s, whole run):")
     for gpu, s in sorted(samples.items()):
         util = [x[0] for x in s]
