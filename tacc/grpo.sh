@@ -35,6 +35,7 @@
 #SBATCH -p gh
 #SBATCH -N 1
 #SBATCH -n 1
+#SBATCH -c 72  # Vista binds a 1-task job to one core otherwise
 #SBATCH -t 24:00:00
 #SBATCH -A CDA26008
 #SBATCH -o logs/grpo-%j.out
@@ -42,6 +43,7 @@
 cd "$SLURM_SUBMIT_DIR"
 module load tacc-apptainer/1.4.1
 unset PYTHONPATH PYTHONHOME
+export CC=gcc CXX=g++  # Triton/inductor compile helpers with $CC; TACC sets it to nvc, which fails
 export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
 export HF_HOME=$WORK/hf HF_HUB_OFFLINE=1
 export CODEGEN_SANDBOX_SIF=$WORK/sif/python311.sif

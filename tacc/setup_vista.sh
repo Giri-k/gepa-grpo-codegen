@@ -16,9 +16,10 @@
 #   uv sync                                   # .venv, used for scoring
 #
 #SBATCH -J setup
-#SBATCH -p gh-dev
+#SBATCH -p gh
 #SBATCH -N 1
 #SBATCH -n 1
+#SBATCH -c 72  # Vista binds a 1-task job to one core otherwise
 #SBATCH -t 00:30:00
 #SBATCH -A CDA26008
 #SBATCH -o logs/setup-%j.out
@@ -26,6 +27,7 @@
 cd "$SLURM_SUBMIT_DIR"
 module load tacc-apptainer/1.4.1
 unset PYTHONPATH PYTHONHOME
+export CC=gcc CXX=g++  # Triton/inductor compile helpers with $CC; TACC sets it to nvc, which fails
 export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
 export HF_HOME=$SCRATCH/hf HF_HUB_OFFLINE=1
 export CODEGEN_SANDBOX_SIF=$WORK/sif/python311.sif
@@ -33,7 +35,7 @@ export APPTAINER_CACHEDIR=$SCRATCH/.apptainer-cache
 # Same digest as src/codegen/sandbox/Dockerfile (a multi-arch index, so this pulls arm64).
 IMAGE=docker://python@sha256:f06d01d4ba3f8ad5af45a3ec87df19c1d317d8e8961edc0fabda61811af6f7cf
 
-echo "== $(date) $(hostname) $(uname -m), $(nproc) cpus, max user processes $(ulimit -u)"
+echo "== $(date) $(hostname) $(uname -m), $(nproc) cpus (affinity $(grep Cpus_allowed_list /proc/self/status | cut -f2)), max user processes $(ulimit -u)"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
 nvidia-smi | grep "CUDA Version"
 
