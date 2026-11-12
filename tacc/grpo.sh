@@ -1,18 +1,23 @@
 #!/bin/bash
-# GRPO + LoRA on grpo_train, 3 A100s (one trainer process + colocated vLLM per GPU).
-# Extra arguments go to codegen.grpo, e.g. a smoke test that times a few steps:
+# GRPO + LoRA on grpo_train, on every GPU of one node (one trainer process +
+# colocated vLLM per GPU): one GH200 on Vista, three A100s on Lonestar6 (with
+# -p gpu-a100). Extra arguments go to codegen.grpo, e.g. a smoke test that times a few steps:
 #
-#   cd $WORK/ls6/post-training/gepa-grpo-codegen
-#   sbatch -p gpu-a100-dev -t 01:00:00 tacc/grpo.sh --max-steps 3
-#   sbatch tacc/grpo.sh --max-steps 80
-#   OUT=$SCRATCH/gepa-grpo/grpo-<id> sbatch tacc/grpo.sh --max-steps 80 --resume   # continue a run
-#   sbatch -p gpu-a100-dev -t 02:00:00 --exclude=c301-002 tacc/grpo.sh --max-steps 40
+#   cd $WORK/post-training/gepa-grpo-codegen
+#   sbatch -p gh-dev -t 01:00:00 tacc/grpo.sh --max-steps 2
+#   sbatch tacc/grpo.sh --max-steps 200
+#   OUT=$SCRATCH/gepa-grpo/grpo-<id> sbatch tacc/grpo.sh --max-steps 200 --resume   # continue a run
+#
+# Budget: a run stops for good once its jobs have used BUDGET_NODE_HOURS node-hours
+# (default 60; 1 SU per node-hour on Vista's gh queues), counted across
+# continuations in <out>/node_seconds.log. Each job also stops early enough to stay
+# under it.
 #
 # Time limits: training saves and stops ~12 min before the job's limit; continue
 # in the same output directory and W&B run with --resume. TACC refuses sbatch on
 # compute nodes, so queue the continuations from a login node, each after the last:
-#   OUT=$SCRATCH/gepa-grpo/grpo-<id> sbatch -p gpu-a100-dev -t 02:00:00 --exclude=c301-002 \
-#     --dependency=afterany:<previous jobid> tacc/grpo.sh --max-steps 40 --resume
+#   OUT=$SCRATCH/gepa-grpo/grpo-<id> sbatch --dependency=afterany:<previous jobid> \
+#     tacc/grpo.sh --max-steps 200 --resume
 # A continuation that finds the run finished exits at once.
 #
 # Checkpoints (LoRA adapter + optimizer) go to $SCRATCH/gepa-grpo/grpo-<jobid>/;
@@ -27,10 +32,10 @@
 #   .venv-gpu/bin/wandb sync $SCRATCH/gepa-grpo/grpo-<jobid>/wandb/offline-run-*
 #
 #SBATCH -J grpo
-#SBATCH -p gpu-a100
+#SBATCH -p gh
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -t 12:00:00
+#SBATCH -t 24:00:00
 #SBATCH -A CDA26008
 #SBATCH -o logs/grpo-%j.out
 
@@ -40,8 +45,9 @@ unset PYTHONPATH PYTHONHOME
 export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
 export HF_HOME=$WORK/hf HF_HUB_OFFLINE=1
 export CODEGEN_SANDBOX_SIF=$WORK/sif/python311.sif
-export CUDA_VISIBLE_DEVICES=0,1,2
 export TOKENIZERS_PARALLELISM=false
+GPUS=$(nvidia-smi -L | grep -c '^GPU')
+EXPECT_GPUS=${EXPECT_GPUS:-$([ "$SLURM_JOB_PARTITION" = "${SLURM_JOB_PARTITION#gpu-a100}" ] && echo 1 || echo 3)}
 
 OUT=${OUT:-$SCRATCH/gepa-grpo/grpo-$SLURM_JOB_ID}
 NAME=$(basename "$OUT")
@@ -54,10 +60,26 @@ mkdir -p "$OUT"
 LIMIT_STR=$(squeue -h -j "$SLURM_JOB_ID" -o %l)
 LEFT_MIN=$(squeue -h -j "$SLURM_JOB_ID" -o %L | awk -F'[-:]' '{ if (NF == 4) print $1*1440 + $2*60 + $3; else if (NF == 3) print $1*60 + $2; else print $1 }')
 DEADLINE=$(( $(date +%s) + 60 * (LEFT_MIN - 12) ))
+# Node-hour budget across all jobs of this run: stop by the budget too, and record
+# this job's use however it ends.
+BUDGET_NODE_HOURS=${BUDGET_NODE_HOURS:-60}
+START=$(date +%s)
+USED=$(awk '{ s += $2 } END { print s + 0 }' "$OUT/node_seconds.log" 2>/dev/null)
+LEFT_BUDGET=$(( BUDGET_NODE_HOURS * 3600 - ${USED:-0} ))
+echo "== node-hours used so far: $(( ${USED:-0} / 3600 )) of $BUDGET_NODE_HOURS"
+if [ "$LEFT_BUDGET" -lt 1800 ]; then
+  echo "== $(date) $NAME has used its $BUDGET_NODE_HOURS node-hour budget; not starting"
+  exit 0
+fi
+BUDGET_DEADLINE=$(( START + LEFT_BUDGET / SLURM_NNODES - 12 * 60 ))
+[ "$BUDGET_DEADLINE" -lt "$DEADLINE" ] && DEADLINE=$BUDGET_DEADLINE
+record_use() { echo "$SLURM_JOB_ID $(( ($(date +%s) - START) * SLURM_NNODES ))" >> "$OUT/node_seconds.log"; }
+trap record_use EXIT
+trap 'exit 143' TERM  # Slurm kills at the time limit with SIGTERM; still record the use
 echo "== $(date) $NAME on $(hostname) (limit $LIMIT_STR, stop by $(date -d @$DEADLINE +%H:%M)), args: $*"
 nvidia-smi --query-gpu=name,memory.total --format=csv
-if [ "$(nvidia-smi -L | grep -c '^GPU')" -lt 3 ]; then
-  echo "== $(date) only $(nvidia-smi -L | grep -c '^GPU') GPUs visible on $(hostname); resubmit with --exclude=$(hostname -s)"
+if [ "$GPUS" -lt "$EXPECT_GPUS" ]; then
+  echo "== $(date) only $GPUS GPUs visible on $(hostname); resubmit with --exclude=$(hostname -s)"
   exit 1
 fi
 
@@ -96,7 +118,7 @@ SMI=$!
 vmstat -t 5 >> "$OUT/cpu.log" &
 VMSTAT=$!
 
-.venv-gpu/bin/accelerate launch --num_processes 3 --num_machines 1 --mixed_precision bf16 --dynamo_backend no \
+.venv-gpu/bin/accelerate launch --num_processes "$GPUS" --num_machines 1 --mixed_precision bf16 --dynamo_backend no \
   -m codegen.grpo --out "$OUT" --deadline "$DEADLINE" "${WANDB[@]}" "$@"
 status=$?
 kill $SMI $VMSTAT 2>/dev/null
