@@ -45,7 +45,7 @@ from pathlib import Path
 
 from codegen import prompts
 from codegen.data.splits import load_split
-from codegen.generate import MODEL
+from codegen.generate import MODEL, select
 from codegen.judge import evaluate_many
 from codegen.sandbox import Sandbox
 
@@ -69,11 +69,46 @@ class SandboxReward:
         self.completions += len(completions)
         self.completion_tokens += sum(len(ids) for ids in completion_ids or [])
         items = [(self.problems[u], THINK_PREFIX + c) for u, c in zip(uid, completions)]
-        return [e.reward for e in evaluate_many(items, self.sandbox)]
+        self.last = evaluate_many(items, self.sandbox)
+        return [e.reward for e in self.last]
 
     def close(self) -> None:
         if self.sandbox is not None:
             self.sandbox.close()
+
+
+class PassedAll:
+    """Logged only (reward weight 0): 1 when a sample passes every test, the pass@1
+    of the batch. Reads the judgments SandboxReward just made for the same samples."""
+
+    __name__ = "passed_all"
+
+    def __init__(self, reward: SandboxReward):
+        self.reward = reward
+
+    def __call__(self, prompts, completions, **kwargs) -> list[float]:
+        return [float(e.passed_all) for e in self.reward.last]
+
+
+def reward_only_eval(trainer_cls):
+    """A GRPOTrainer whose evaluation only generates and scores (the eval/ metrics:
+    reward, passed_all, truncation, length). TRL's own eval step also computes
+    log-probs and the loss over the whole eval batch at once, which a GPU near its
+    memory limit with ~10k-token sequences cannot hold, and which we don't use."""
+    import torch
+
+    class Trainer(trainer_cls):
+        def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+            # Without importance-sampling correction, scoring skips the log-prob pass.
+            correction = self.vllm_importance_sampling_correction
+            self.vllm_importance_sampling_correction = False
+            try:
+                self._prepare_inputs(inputs)
+            finally:
+                self.vllm_importance_sampling_correction = correction
+            return torch.zeros((), device=self.accelerator.device), None, None
+
+    return Trainer
 
 
 def time_profiled_blocks(timers: defaultdict) -> None:
@@ -162,11 +197,11 @@ def perf_callback(path: Path, timers: defaultdict, reward: SandboxReward, rank: 
     return PerfLog()
 
 
-def build_dataset(tok, system_prompt: str, max_prompt_tokens: int):
+def build_dataset(tok, system_prompt: str, max_prompt_tokens: int, problems: list):
     from datasets import Dataset
 
     rows, dropped = [], []
-    for p in load_split("grpo_train"):
+    for p in problems:
         text = tok.apply_chat_template(prompts.messages(p, system_prompt), tokenize=False, add_generation_prompt=True)
         if not text.endswith(THINK_PREFIX):
             raise SystemExit("chat template does not open a <think> block; expected a Qwen3 thinking model")
@@ -192,6 +227,10 @@ def main() -> None:
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--vllm-gpu-memory", type=float, default=0.5, help="fraction of each GPU vLLM may use")
     ap.add_argument("--save-steps", type=int, default=10)
+    ap.add_argument("--eval-problems", type=int, default=64,
+                    help="fixed random dev subset scored during training (0: no eval)")
+    ap.add_argument("--eval-generations", type=int, default=4, help="samples per eval problem")
+    ap.add_argument("--eval-steps", type=int, default=20, help="evaluate before training and every this many steps")
     ap.add_argument("--keep-checkpoints", type=int, default=0,
                     help="most checkpoints to keep (0: all, so any one can be evaluated on dev)")
     ap.add_argument("--seed", type=int, default=0)
@@ -211,8 +250,14 @@ def main() -> None:
 
     tok = AutoTokenizer.from_pretrained(args.model)
     system_prompt = prompts.load_system_prompt(args.system_prompt)
-    dataset, dropped = build_dataset(tok, system_prompt, args.max_prompt_tokens)
-    problems = {p.uid: p for p in load_split("grpo_train")}
+    train_problems = load_split("grpo_train")
+    dataset, dropped = build_dataset(tok, system_prompt, args.max_prompt_tokens, train_problems)
+    eval_problems = select(load_split("dev"), args.eval_problems, seed=0) if args.eval_problems else []
+    eval_dataset, eval_dropped = build_dataset(tok, system_prompt, args.max_prompt_tokens, eval_problems)
+    eval_samples = len(eval_dataset) * args.eval_generations
+    if eval_samples % world:
+        raise SystemExit(f"eval samples ({eval_samples}) must divide across {world} GPUs")
+    problems = {p.uid: p for p in train_problems + eval_problems}
     # Leave a few cores per GPU for the trainer and vLLM.
     workers = max(1, (len(os.sched_getaffinity(0)) - 4 * world) // world)
 
@@ -236,6 +281,13 @@ def main() -> None:
         per_device_train_batch_size=1,
         gradient_accumulation_steps=completions_per_step // world,
         num_generations=args.num_generations,
+        # Eval: the whole dev subset in one vLLM call per GPU, at the training sampling settings.
+        eval_strategy="steps" if eval_samples else "no",
+        eval_steps=args.eval_steps,
+        eval_on_start=bool(eval_samples),
+        per_device_eval_batch_size=max(1, eval_samples // world),
+        num_generations_eval=args.eval_generations,
+        reward_weights=[1.0, 0.0],  # passed_all is logged, not trained on
         max_prompt_length=None,  # prompts are pre-filtered; truncating them would cut the problem statement
         max_completion_length=args.max_tokens,
         temperature=args.temperature,
@@ -274,11 +326,12 @@ def main() -> None:
     time_profiled_blocks(timers)
     rank = int(os.environ.get("RANK", 0))
     args.out.mkdir(parents=True, exist_ok=True)
-    trainer = GRPOTrainer(
+    trainer = reward_only_eval(GRPOTrainer)(
         model=args.model,
-        reward_funcs=reward,
+        reward_funcs=[reward, PassedAll(reward)],
         args=config,
         train_dataset=dataset,
+        eval_dataset=eval_dataset if eval_samples else None,
         processing_class=tok,
         peft_config=peft_config,
         callbacks=[perf_callback(args.out / f"perf.rank{rank}.jsonl", timers, reward, rank)]
@@ -289,6 +342,7 @@ def main() -> None:
         (args.out / "run_args.json").write_text(json.dumps({
             **{k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
             "world_size": world, "problems": len(dataset), "dropped_long_prompts": dropped,
+            "eval_uids": list(eval_dataset["uid"]) if eval_samples else [], "eval_dropped_long_prompts": eval_dropped,
             "sandbox_workers_per_process": workers,
         }, indent=2))
     try:
