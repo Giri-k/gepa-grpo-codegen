@@ -192,6 +192,8 @@ def main() -> None:
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--vllm-gpu-memory", type=float, default=0.5, help="fraction of each GPU vLLM may use")
     ap.add_argument("--save-steps", type=int, default=10)
+    ap.add_argument("--keep-checkpoints", type=int, default=0,
+                    help="most checkpoints to keep (0: all, so any one can be evaluated on dev)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true", help="continue from the latest checkpoint in --out")
     ap.add_argument("--deadline", type=float, help="Unix time to save and stop by (continue with --resume)")
@@ -256,7 +258,7 @@ def main() -> None:
         vllm_importance_sampling_cap=2.0,
         logging_steps=1,
         save_steps=args.save_steps,
-        save_total_limit=3,
+        save_total_limit=args.keep_checkpoints or None,
         report_to="wandb" if args.wandb_project else "none",
         run_name=os.environ.get("WANDB_NAME", args.out.name),
         log_completions=False,

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Evaluate one condition: generate on all 3 A100s (one vLLM per GPU), then score
-# in the Apptainer sandbox. Settings come from environment variables:
+# Evaluate one condition: generate on every GPU of the node (one vLLM per GPU: one
+# GH200 on Vista, three A100s on Lonestar6 with -p gpu-a100), then score in the
+# Apptainer sandbox. Settings come from environment variables:
 #
 #   SPLIT      split to evaluate (default eval)
 #   N          samples per problem (default 4)
@@ -11,24 +12,25 @@
 #   MAX_PARTS  most jobs one run may take (default 3)
 #   EXCLUDE    nodes to keep continuation jobs off, e.g. one with a dead GPU
 #
-#   cd $WORK/ls6/post-training/gepa-grpo-codegen
+#   cd $WORK/post-training/gepa-grpo-codegen
 #   NAME=c1 sbatch tacc/eval.sh                                    # C1: base + original
-#   NAME=c1 sbatch -p gpu-a100-dev -t 02:00:00 tacc/eval.sh        # same, on the dev queue
 #   NAME=c3 LORA=$WORK/gepa-grpo-runs/grpo-<id>/final sbatch tacc/eval.sh   # C3
+#   NAME=filter SPLIT=grpo_train N=4 sbatch -t 04:00:00 tacc/eval.sh        # GRPO problem filter
 #
 # Generation saves after every chunk of problems and stops 15 minutes before the
 # time limit. If problems are left, the job submits a continuation of itself
 # (same queue and limit, same output directory) that picks up where it stopped;
 # scoring runs in the part that finishes generation. To continue a run by hand:
-#   RUN=c1-<first jobid> sbatch -p gpu-a100-dev -t 02:00:00 tacc/eval.sh
+#   RUN=c1-<first jobid> sbatch -t 02:30:00 tacc/eval.sh
 #
 # Outputs: $SCRATCH/gepa-grpo/<run>/, copied to $WORK/gepa-grpo-runs/ and the
 # summary to results/<run>/.
 #
 #SBATCH -J eval
-#SBATCH -p gpu-a100
+#SBATCH -p gh
 #SBATCH -N 1
 #SBATCH -n 1
+#SBATCH -c 72  # Vista binds a 1-task job to one core otherwise
 #SBATCH -t 02:30:00
 #SBATCH -A CDA26008
 #SBATCH -o logs/eval-%j.out
@@ -36,10 +38,14 @@
 cd "$SLURM_SUBMIT_DIR"
 module load tacc-apptainer/1.4.1
 unset PYTHONPATH PYTHONHOME
+export CC=gcc CXX=g++  # Triton/inductor compile helpers with $CC; TACC sets it to nvc, which fails
 export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
-export HF_HOME=$WORK/hf HF_HUB_OFFLINE=1
-export CODEGEN_SANDBOX_SIF=$WORK/sif/python311.sif
-export CUDA_VISIBLE_DEVICES=0,1,2
+export HF_HOME=$SCRATCH/hf HF_HUB_OFFLINE=1
+[ -d "$HF_HOME/hub" ] || export HF_HOME=$WORK/hf  # scratch is purged
+export CODEGEN_SANDBOX_SIF=$SCRATCH/sif/python311.sif
+[ -f "$CODEGEN_SANDBOX_SIF" ] || export CODEGEN_SANDBOX_SIF=$WORK/sif/python311.sif
+GPUS=$(nvidia-smi -L | grep -c '^GPU')
+EXPECT_GPUS=${EXPECT_GPUS:-$([ "$SLURM_JOB_PARTITION" = "${SLURM_JOB_PARTITION#gpu-a100}" ] && echo 1 || echo 3)}
 
 SPLIT=${SPLIT:-eval}
 N=${N:-4}
@@ -63,14 +69,14 @@ echo "== $(date) $RUN part $PART/$MAX_PARTS on $(hostname) ($SLURM_JOB_PARTITION
 nvidia-smi --query-gpu=name,memory.total --format=csv
 # A node can lose a GPU without Slurm noticing (c301-002 showed 2 of 3 on 2026-10-27);
 # fail before loading anything. Resubmit with --exclude=<node>.
-if [ "$(nvidia-smi -L | grep -c '^GPU')" -lt 3 ]; then
-  echo "== $(date) only $(nvidia-smi -L | grep -c '^GPU') GPUs visible on $(hostname); resubmit with --exclude=$(hostname -s)"
+if [ "$GPUS" -lt "$EXPECT_GPUS" ]; then
+  echo "== $(date) only $GPUS GPUs visible on $(hostname); resubmit with --exclude=$(hostname -s)"
   exit 1
 fi
 
 echo "== $(date) generate (stops after $GEN_MIN min)"
 .venv-gpu/bin/python -m codegen.generate --split "$SPLIT" --n "$N" --system-prompt "$PROMPT" --max-tokens 8192 \
-  --gpus 3 --stop-after "$GEN_MIN" "${EXTRA[@]}" --out "$OUT"
+  --gpus "$GPUS" --stop-after "$GEN_MIN" "${EXTRA[@]}" --out "$OUT"
 gen=$?
 grep -h "chunk .* done\|already done\|stopping" "$OUT"/shard*.log
 if [ $gen -eq 3 ]; then
