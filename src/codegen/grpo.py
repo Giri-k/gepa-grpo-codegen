@@ -234,10 +234,26 @@ def main() -> None:
     ap.add_argument("--keep-checkpoints", type=int, default=0,
                     help="most checkpoints to keep (0: all, so any one can be evaluated on dev)")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--resume", action="store_true", help="continue from the latest checkpoint in --out")
+    ap.add_argument("--resume", action="store_true", help="kept for old commands; a run always continues from the newest complete checkpoint in --out")
     ap.add_argument("--deadline", type=float, help="Unix time to save and stop by (continue with --resume)")
     ap.add_argument("--wandb-project", help="log to this Weights & Biases project (run name: $WANDB_NAME)")
     args = ap.parse_args()
+
+    # Continue from the newest complete checkpoint (trainer_state.json is written last)
+    # whenever --out has one, even without --resume: jobs queued for the same run
+    # directory then take over from each other.
+    done = sorted((c for c in args.out.glob("checkpoint-*") if (c / "trainer_state.json").is_file()),
+                  key=lambda c: int(c.name.split("-")[1]))
+    resume_from = done[-1] if done else None
+    args.resume = resume_from is not None
+    if resume_from and int(os.environ.get("RANK", 0)) == 0:
+        # A checkpoint keeps the step settings it was saved with, and Trainer reuses them
+        # over the new arguments; use this job's.
+        state_file = resume_from / "trainer_state.json"
+        state = json.loads(state_file.read_text())
+        state.update(max_steps=args.max_steps, eval_steps=args.eval_steps, save_steps=args.save_steps)
+        state_file.write_text(json.dumps(state, indent=2))
+        print(f"== resuming from {resume_from} (step {state['global_step']})", flush=True)
 
     from peft import LoraConfig
     from transformers import AutoTokenizer
@@ -284,7 +300,7 @@ def main() -> None:
         # Eval: the whole dev subset in one vLLM call per GPU, at the training sampling settings.
         eval_strategy="steps" if eval_samples else "no",
         eval_steps=args.eval_steps,
-        eval_on_start=bool(eval_samples),
+        eval_on_start=bool(eval_samples) and not args.resume,  # the step-0 eval is already logged
         per_device_eval_batch_size=max(1, eval_samples // world),
         num_generations_eval=args.eval_generations,
         reward_weights=[1.0, 0.0],  # passed_all is logged, not trained on
@@ -346,7 +362,7 @@ def main() -> None:
             "sandbox_workers_per_process": workers,
         }, indent=2))
     try:
-        trainer.train(resume_from_checkpoint=args.resume or None)
+        trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
     finally:
         reward.close()
     trainer.save_state()  # trainer_state.json: per-step reward, truncation, zero-std groups
