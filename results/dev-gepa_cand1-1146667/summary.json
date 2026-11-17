@@ -1,0 +1,62 @@
+{
+  "problems": 200,
+  "samples": 800,
+  "pass@1": 0.4938,
+  "pass@1_ci95": [
+    0.4288,
+    0.5575
+  ],
+  "mean_reward": 0.5134,
+  "problems_all_fail": 79,
+  "problems_mixed": 40,
+  "problems_all_pass": 81,
+  "pass@1_by_difficulty": {
+    "EASY": {
+      "problems": 107,
+      "pass@1": 0.7033
+    },
+    "MEDIUM": {
+      "problems": 31,
+      "pass@1": 0.2903
+    },
+    "MEDIUM_HARD": {
+      "problems": 62,
+      "pass@1": 0.2339
+    }
+  },
+  "status": {
+    "ok": 427,
+    "unfinished_think": 361,
+    "syntax_error": 10,
+    "no_code": 2
+  },
+  "test_verdicts": {
+    "passed": 48956,
+    "wrong_answer": 1492,
+    "runtime_error": 295,
+    "skipped": 128,
+    "timeout": 12
+  },
+  "truncated": 0.4775,
+  "mean_completion_tokens": 6290,
+  "model": "Qwen/Qwen3-4B-Thinking-2507",
+  "lora": null,
+  "system_prompt": "gepa_cand1",
+  "split": "dev",
+  "sampling": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 8192,
+    "seed": 0
+  },
+  "generate_seconds": 1334.5,
+  "tokens_per_second": 3770.8,
+  "score_seconds": 35.7,
+  "sandbox_workers": 70,
+  "sandbox_isolation": {
+    "backend": "apptainer",
+    "network": "apptainer --net --network none",
+    "pids_limit": true
+  }
+}

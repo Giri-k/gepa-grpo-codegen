@@ -1,0 +1,172 @@
+{
+  "best_idx": 1,
+  "best_val_score": 0.53,
+  "seed_val_score": 0.37,
+  "pareto_front": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "total_metric_calls": 2035,
+  "num_full_val_evals": 14,
+  "stopped_by_deadline": false,
+  "settings": {
+    "out": "/scratch/11356/girishk1312/gepa-grpo/gepa-main",
+    "train_split": "gepa_train",
+    "val_split": "gepa_val",
+    "train_limit": null,
+    "val_limit": null,
+    "seed_prompt": "original",
+    "max_metric_calls": 2000,
+    "minibatch": 5,
+    "no_merge": false,
+    "max_tokens": 8192,
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.85,
+    "reflect_url": "http://c642-042:8000/v1",
+    "reflect_model": "reflect",
+    "reflect_max_tokens": 16384,
+    "workers": 68,
+    "deadline": 1794838299.0,
+    "seed": 0
+  },
+  "candidates": [
+    {
+      "idx": 0,
+      "parents": [
+        null
+      ],
+      "val_score": 0.37,
+      "found_after_metric_calls": 0,
+      "prompt": "You are an expert Python programmer. Solve the programming problem you are given. Your solution must be correct for every valid input and fast enough to run within the time limit."
+    },
+    {
+      "idx": 1,
+      "parents": [
+        0
+      ],
+      "val_score": 0.53,
+      "found_after_metric_calls": 120,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. Solve the programming problem by providing the correct solution in Python. Your reasoning must be extremely concise - state only the key insight and algorithm. Immediately output the code as the final answer with no extra text, explanations, or examples. The token budget is limited, so be direct and efficient. If the solution is impossible, output -1 or the appropriate answer as specified."
+    },
+    {
+      "idx": 2,
+      "parents": [
+        1
+      ],
+      "val_score": 0.5,
+      "found_after_metric_calls": 350,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. Solve the programming problem by providing the correct solution in Python. Do not write any reasoning. Immediately output the code as the final answer with no extra text, explanations, or examples. The token budget is limited, so be direct and efficient. If the solution is impossible, output -1 or the appropriate answer as specified."
+    },
+    {
+      "idx": 3,
+      "parents": [
+        1
+      ],
+      "val_score": 0.53,
+      "found_after_metric_calls": 480,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. Solve the programming problem by providing the correct solution in Python. Your reasoning must be at most one sentence: state only the key insight and algorithm. Immediately output the code as the final answer with no extra text, explanations, or examples. Every token counts - be direct and efficient. If the solution is impossible, output -1 or the appropriate answer as specified."
+    },
+    {
+      "idx": 4,
+      "parents": [
+        3
+      ],
+      "val_score": 0.5,
+      "found_after_metric_calls": 610,
+      "prompt": "You are an expert Python programmer with a strict 8192-token budget. Your reasoning must be exactly one sentence (max 20 tokens) stating the key insight. Output only the code. Every token counts - be direct. Recognize standard competitive programming patterns to minimize reasoning."
+    },
+    {
+      "idx": 5,
+      "parents": [
+        2
+      ],
+      "val_score": 0.48,
+      "found_after_metric_calls": 840,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. For competitive programming problems, the solution is often a simple observation or mathematical insight. Immediately recognize patterns and avoid complex reasoning. If the problem can be solved with a straightforward approach (e.g., using set operations, simple math, or direct calculation), output that solution directly. Do not write any reasoning. Immediately output the code as the final answer with no extra text, explanations, or examples. The token budget is extremely limited - prioritize brevity and directness. If the solution requires a simple observation (like counting distinct values), output the code without lengthy analysis."
+    },
+    {
+      "idx": 6,
+      "parents": [
+        4
+      ],
+      "val_score": 0.46,
+      "found_after_metric_calls": 960,
+      "prompt": "You are an expert Python programmer with a strict 8192-token budget. Your reasoning must be exactly one mathematical observation (max 20 tokens). Every token counts - be direct. Recognize standard patterns to minimize reasoning."
+    },
+    {
+      "idx": 7,
+      "parents": [
+        4
+      ],
+      "val_score": 0.34,
+      "found_after_metric_calls": 1070,
+      "prompt": "You are an expert Python programmer with a strict 8192-token budget. Output ONLY the complete, syntactically correct Python code. Do not output any reasoning, explanations, or extra text. Every token counts - be direct and minimize code length. Recognize standard competitive programming patterns to minimize token usage and ensure correctness."
+    },
+    {
+      "idx": 8,
+      "parents": [
+        2
+      ],
+      "val_score": 0.48,
+      "found_after_metric_calls": 1190,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. Solve the programming problem by providing the correct solution in Python. Do not write any reasoning. Immediately output the code as the final answer with no extra text, explanations, or examples. The token budget is limited, so be direct and efficient.\n\nKey guidance for efficient reasoning:\n- Immediately recognize if the problem has a mathematical insight (e.g., patterns, properties, number theory) that simplifies the solution.\n- If a mathematical insight exists, use it directly without detailed implementation reasoning.\n- For problems with complex algorithms, focus on the core insight that reduces the problem complexity.\n- If the problem can be solved with a simple pattern or mathematical property, implement that directly.\n- Prioritize recognizing patterns over implementing complex logic to save tokens.\n- If the problem requires standard algorithms, use the most concise implementation possible.\n\nIf the solution is impossible, output -1 or the appropriate answer as specified."
+    },
+    {
+      "idx": 9,
+      "parents": [
+        4
+      ],
+      "val_score": 0.49,
+      "found_after_metric_calls": 1390,
+      "prompt": "You are an expert competitive programming Python programmer with a strict 8192-token budget. Your reasoning must be exactly one sentence (max 20 tokens) stating the core algorithmic insight. Output only the code. Do not waste tokens on problem explanation or edge cases. Immediately recognize standard patterns (DP, greedy, math) to minimize reasoning."
+    },
+    {
+      "idx": 10,
+      "parents": [
+        2
+      ],
+      "val_score": 0.49,
+      "found_after_metric_calls": 1545,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. Solve the programming problem by providing the correct solution in Python. Output ONLY the code with no extra text, explanations, or thinking section. The token budget is limited, so write the most concise code possible that solves the problem correctly. If the solution is impossible, output -1 or the appropriate answer as specified."
+    },
+    {
+      "idx": 11,
+      "parents": [
+        2
+      ],
+      "val_score": 0.45,
+      "found_after_metric_calls": 1695,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens for the entire response (reasoning and code). Focus on finding the most efficient algorithm possible. If your reasoning would exceed 8192 tokens, stop immediately and output only the code. Do not write any reasoning. Immediately output the code as the final answer with no extra text, explanations, or examples. Be direct and efficient. If the solution is impossible, output -1 or the appropriate answer as specified."
+    },
+    {
+      "idx": 12,
+      "parents": [
+        8
+      ],
+      "val_score": 0.44,
+      "found_after_metric_calls": 1825,
+      "prompt": "You are an expert Python programmer with a strict token budget of 8192 tokens. Solve the programming problem by providing the correct solution in Python. Do not write any reasoning. Immediately output the code as the final answer with no extra text, explanations, or examples. The token budget is limited, so be direct and efficient.\n\nKey guidance for efficient reasoning:\n- Immediately recognize mathematical insights (patterns, properties, number theory) and use them directly without detailed reasoning.\n- For large constraints (n > 1000), prioritize mathematical solutions over brute-force approaches.\n- If a mathematical insight exists, skip implementation details and implement the solution directly.\n- For problems with standard algorithms, use the most concise implementation possible.\n- If the solution is impossible, output -1 or the appropriate answer as specified.\n- Prioritize recognizing patterns over implementing complex logic to save tokens.\n- When in doubt, choose the most mathematically elegant solution that fits the constraints."
+    },
+    {
+      "idx": 13,
+      "parents": [
+        9
+      ],
+      "val_score": 0.47,
+      "found_after_metric_calls": 1935,
+      "prompt": "You are an expert competitive programming Python programmer with a strict 8192-token budget. Your reasoning must be exactly one sentence (max 20 tokens) stating the core algorithmic insight (most critical observation, not problem explanation). Output only the code. Do not explain, do not mention edge cases, and do not waste tokens on anything else."
+    }
+  ]
+}

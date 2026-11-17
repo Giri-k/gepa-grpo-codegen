@@ -1,0 +1,23 @@
+{
+  "out": "/scratch/11356/girishk1312/gepa-grpo/smoke-vista",
+  "model": "Qwen/Qwen3-4B-Thinking-2507",
+  "system_prompt": "original",
+  "max_tokens": 8192,
+  "max_prompt_tokens": 2048,
+  "num_generations": 8,
+  "prompts_per_step": 16,
+  "max_steps": 2,
+  "lr": 1e-05,
+  "lora_rank": 32,
+  "temperature": 0.6,
+  "vllm_gpu_memory": 0.65,
+  "save_steps": 100,
+  "seed": 0,
+  "resume": false,
+  "deadline": 1794527764.0,
+  "wandb_project": null,
+  "world_size": 1,
+  "problems": 756,
+  "dropped_long_prompts": [],
+  "sandbox_workers_per_process": 68
+}

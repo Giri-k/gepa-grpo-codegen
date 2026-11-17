@@ -4,9 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the dataset survey, design options (with recommendations), the proposed repo layout, and the phased task list, so follow it when you scaffold code. Done so far: the data pipeline (Phase 1) and the shared evaluator (Phase 2): code extractor (`extract.py`), Docker sandbox (`sandbox/`), answer checker (`judge.py`), and official-solution validation of every split problem (`data/validate.py`). Next: the baseline pilot with Qwen3-4B.
+This is a UT "Post-Training of LLMs" course project by Girishkaushik Karthikeyan and Sergio Sánchez Manso; the proposal PDF lives one directory up and is not in the repo. `plan.md` holds the original dataset survey and design options; some choices changed since (below).
 
-Training and large-scale generation run on **TACC** (Slurm, no Docker, so use Apptainer; models and data are pre-downloaded on login nodes; large outputs go on `$SCRATCH`, which is purged). Development and small pilots run locally.
+**All four conditions are done.** See `results/RESULTS.md` for the 2×2 results, statistics, GEPA/GRPO details, compute table and caveats, and `results/C1.md` for the baseline and budget forcing. Remaining: the course write-up.
+
+Decisions that differ from `plan.md`:
+- **Model:** `Qwen/Qwen3-4B-Thinking-2507` (thinking on), strict 8192-token limit shared by reasoning and answer. Sampling: T 0.6, top-p 0.95, top-k 20, seed 0, 4 samples per problem.
+- **GRPO:** TRL `dr_grpo`, β 0, LoRA r 32, lr 1e-5, 16 problems × 8 samples per step. Reward is the fraction of tests passed, and a truncated sample scores 0. The final adapter is checkpoint-120 at `$WORK/gepa-grpo-runs/grpo-main/checkpoint-120`.
+- **GEPA:** the `gepa` 0.1.4 package with `gepa_adapter.py`. The reflection model is Qwen3-30B-A3B-Thinking-2507 on a second node. The final prompt is `src/codegen/prompts/gepa_v1.txt`, which is candidate #1, chosen on `dev`.
+- **Budget forcing** (`force_answer.py`) is reported for C1 only. All conditions are compared on the strict metric.
+
+Large runs happen on **TACC Vista** (GH200, 1 GPU per node; account CDA26008; 1 SU per node-hour). TACC has no Docker, so the sandbox uses Apptainer, and Apptainer does not run on login nodes. Large outputs go in `$SCRATCH`, which is purged, and are copied to `$WORK/gepa-grpo-runs/<run>`. Each run's summary also goes in `results/<run>`. TACC refuses `sbatch` from compute nodes, so a job stopped by its time limit is continued by submitting the same command again from a login node.
+
+```bash
+cd $WORK/post-training/gepa-grpo-codegen
+NAME=c2 PROMPT=gepa_v1 sbatch -p gh-dev -t 02:00:00 tacc/eval.sh                  # one condition (SPLIT=dev, LORA=... also)
+OUT=$SCRATCH/gepa-grpo/grpo-<id> sbatch tacc/grpo.sh --max-steps 200 --resume      # GRPO (continue)
+OUT=$SCRATCH/gepa-grpo/gepa-main sbatch tacc/gepa.sh --max-metric-calls 2000       # GEPA, 2 nodes (resumes from OUT)
+PYTHONPATH=src .venv-gpu/bin/python -m codegen.compare C1=$WORK/gepa-grpo-runs/c1-3538415-forced:strict \
+  C2=... C3=... C4=... --out results/comparison.json                               # 2x2 statistics
+```
+
+The rest of this file describes the data pipeline and evaluator from the planning phase; the Docker details apply to local development only.
 
 ## Commands
 

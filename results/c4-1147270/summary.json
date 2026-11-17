@@ -1,0 +1,63 @@
+{
+  "problems": 500,
+  "samples": 2000,
+  "pass@1": 0.5765,
+  "pass@1_ci95": [
+    0.5375,
+    0.615
+  ],
+  "mean_reward": 0.662,
+  "problems_all_fail": 159,
+  "problems_mixed": 111,
+  "problems_all_pass": 230,
+  "pass@1_by_difficulty": {
+    "competition": {
+      "problems": 50,
+      "pass@1": 0.35
+    },
+    "interview": {
+      "problems": 300,
+      "pass@1": 0.525
+    },
+    "introductory": {
+      "problems": 150,
+      "pass@1": 0.755
+    }
+  },
+  "status": {
+    "ok": 1502,
+    "unfinished_think": 472,
+    "syntax_error": 22,
+    "no_code": 4
+  },
+  "test_verdicts": {
+    "passed": 33560,
+    "wrong_answer": 3876,
+    "skipped": 797,
+    "runtime_error": 399,
+    "timeout": 158,
+    "memory": 10
+  },
+  "truncated": 0.2545,
+  "mean_completion_tokens": 4672,
+  "model": "Qwen/Qwen3-4B-Thinking-2507",
+  "lora": "/work/11356/girishk1312/vista/gepa-grpo-runs/grpo-main/checkpoint-120",
+  "system_prompt": "gepa_v1",
+  "split": "eval",
+  "sampling": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 8192,
+    "seed": 0
+  },
+  "generate_seconds": 2625.5,
+  "tokens_per_second": 3559.2,
+  "score_seconds": 47.0,
+  "sandbox_workers": 70,
+  "sandbox_isolation": {
+    "backend": "apptainer",
+    "network": "apptainer --net --network none",
+    "pids_limit": true
+  }
+}
