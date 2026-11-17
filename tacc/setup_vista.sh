@@ -10,7 +10,7 @@
 # so torch comes from the PyTorch cu128 index):
 #   uv venv .venv-gpu --python 3.12
 #   uv pip install -p .venv-gpu vllm==0.11.2 trl==0.26.2 peft==0.21.2 transformers==4.57.6 \
-#     accelerate==1.15.0 wandb==0.31.0 datasets==5.0.1 pytest -e .
+#     accelerate==1.15.0 wandb==0.31.0 datasets==5.0.1 gepa==0.1.4 pytest -e .
 #   uv pip install -p .venv-gpu --reinstall-package torch --index https://download.pytorch.org/whl/cu128 \
 #     --index-strategy unsafe-best-match torch==2.9.0+cu128 torchvision==0.24.0 torchaudio==2.9.0
 #   uv sync                                   # .venv, used for scoring
