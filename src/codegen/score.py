@@ -42,7 +42,7 @@ def summarize(rows: list[dict], difficulty: dict[str, str]) -> dict:
     for uid, rate in pass_rate.items():
         by_difficulty[difficulty[uid]].append(rate)
 
-    return {
+    summary = {
         "problems": len(by_problem),
         "samples": len(rows),
         "pass@1": round(mean(rates), 4),
@@ -58,6 +58,14 @@ def summarize(rows: list[dict], difficulty: dict[str, str]) -> dict:
         "truncated": round(mean(r["finish_reason"] == "length" for r in rows), 4),
         "mean_completion_tokens": round(mean(r["completion_tokens"] for r in rows)),
     }
+    forced = [r for r in rows if r.get("forced")]
+    if forced:  # a codegen.force_answer run
+        summary["forced"] = {
+            "samples": len(forced), "passed_all": sum(r["passed_all"] for r in forced),
+            "status": dict(Counter(r["status"] for r in forced).most_common()),
+            "answer_truncated": sum(r["finish_reason"] == "length" for r in forced),
+        }
+    return summary
 
 
 def main() -> None:
@@ -83,6 +91,7 @@ def main() -> None:
                 "uid": g["uid"], "sample": g["sample"], "status": e.status, "reward": e.reward,
                 "passed_all": e.passed_all, "verdicts": dict(Counter(e.verdicts)), "n_tests": e.n_tests,
                 "finish_reason": g["finish_reason"], "completion_tokens": g["completion_tokens"],
+                **({"forced": True} if g.get("forced") else {}),
             }
             rows.append(row)
             f.write(json.dumps(row) + "\n")
