@@ -47,6 +47,20 @@ Paired tests. "Only first" and "only second" count the matched sample pairs wher
 2. The two gains overlap more than they add up. On the GRPO model the GEPA prompt adds only 1.9 points. That gain is still significant, but the interaction is clearly negative.
 3. C4 is the best condition, though only slightly better than C3.
 
+## Figures
+
+Made by `scripts/make_plots.py` (`uv run --no-project --with matplotlib --with numpy python scripts/make_plots.py`) from the per-sample outputs in `$WORK/gepa-grpo-runs`.
+
+| | |
+|---|---|
+| ![2x2](figures/fig1_main_2x2.png) **1.** pass@1 for the four conditions | ![effects](figures/fig2_effects.png) **2.** Paired effects and the interaction |
+| ![difficulty](figures/fig3_by_difficulty.png) **3.** pass@1 by difficulty | ![outcomes](figures/fig4_outcomes.png) **4.** Outcome of every sample |
+| ![tokens](figures/fig5_token_use.png) **5.** Share of samples finished by each token count | ![grpo](figures/fig6_grpo_training.png) **6.** GRPO training curves |
+| ![gepa](figures/fig7_gepa_search.png) **7.** GEPA search: candidates, lineage, best so far | ![dev](figures/fig8_gepa_dev_choice.png) **8.** GEPA prompts on gepa_val vs dev |
+| ![compute](figures/fig9_gain_vs_compute.png) **9.** Gain over C1 vs node-hours | |
+
+Fig. 6 also shows that about 60% of GRPO groups had all 8 rewards equal throughout training (no learning signal from those problems), and that token entropy fell only slightly (0.20 → 0.18).
+
 ## Why the two gains overlap: the token budget
 
 | | C1 | C2 | C3 | C4 |
